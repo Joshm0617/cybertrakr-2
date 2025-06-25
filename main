@@ -1,0 +1,10 @@
+from gui import MitigationNation
+from PySide6.QtWidgets import QApplication
+import sys
+
+if __name__ == "__main__":
+    print("Launching Mitigation Nation...")
+    app = QApplication(sys.argv)
+    window = MitigationNation()
+    window.show()
+    sys.exit(app.exec())
