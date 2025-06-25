@@ -1,0 +1,208 @@
+from PySide6.QtWidgets import (
+    QWidget, QLabel, QVBoxLayout, QHBoxLayout, QLineEdit, QPushButton,
+    QTextEdit, QComboBox, QMessageBox, QListWidget, QFileDialog, QApplication
+)
+from PySide6.QtGui import QFont
+from PySide6.QtCore import Qt
+from excel_manager import ExcelManager
+from automation import run_automation
+import json
+import sys
+
+class MitigationNation(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("Mitigation Nation - Sci-Fi Edition")
+        self.resize(1000, 600)
+        self.move(100, 100)
+
+        self.excel_manager = ExcelManager()
+        self.stig_list = self.load_stig_list()
+
+        self.setup_ui()
+        self.apply_style()
+
+    def load_stig_list(self):
+        try:
+            with open("stig_list.json") as f:
+                return json.load(f)
+        except Exception as e:
+            print(f"Error loading STIG list: {e}")
+            return []
+
+    def setup_ui(self):
+        layout = QVBoxLayout()
+
+        title = QLabel("🛸 MITIGATION NATION")
+        title.setFont(QFont("Consolas", 28))
+        layout.addWidget(title)
+
+        input_layout = QHBoxLayout()
+        self.stig_input = QLineEdit()
+        self.stig_input.setPlaceholderText("Enter STIG Name")
+        self.stig_input.textChanged.connect(self.show_autocomplete)
+
+        self.autocomplete_list = QListWidget()
+        self.autocomplete_list.hide()
+        self.autocomplete_list.itemClicked.connect(self.fill_autocomplete)
+
+        self.vuln_input = QLineEdit()
+        self.vuln_input.setPlaceholderText("Enter Vuln ID (Optional)")
+        input_layout.addWidget(QLabel("STIG:"))
+        input_layout.addWidget(self.stig_input)
+        input_layout.addWidget(QLabel("Vuln ID:"))
+        input_layout.addWidget(self.vuln_input)
+        layout.addLayout(input_layout)
+        layout.addWidget(self.autocomplete_list)
+
+        self.output_box = QTextEdit()
+        layout.addWidget(self.output_box)
+
+        self.run_button = QPushButton("Run Automation")
+        self.run_button.clicked.connect(self.run_automation_task)
+        layout.addWidget(self.run_button)
+
+        layout.addSpacing(10)
+        layout.addWidget(QLabel("📎 Excel Integration"))
+
+        excel_layout = QHBoxLayout()
+        self.cell_input = QLineEdit()
+        self.cell_input.setPlaceholderText("Target Cell (e.g., A1)")
+        self.cell_input.setEnabled(False)
+
+        self.sheet_dropdown = QComboBox()
+        self.sheet_dropdown.setEnabled(False)
+
+        self.confirm_excel_btn = QPushButton("Attach Excel")
+        self.confirm_excel_btn.clicked.connect(self.attach_excel_file)
+        self.excel_status = QLabel("No Excel file attached.")
+
+        excel_layout.addWidget(QLabel("Sheet:"))
+        excel_layout.addWidget(self.sheet_dropdown)
+        excel_layout.addWidget(QLabel("Cell:"))
+        excel_layout.addWidget(self.cell_input)
+        excel_layout.addWidget(self.confirm_excel_btn)
+
+        layout.addLayout(excel_layout)
+        layout.addWidget(self.excel_status)
+
+        self.setLayout(layout)
+
+    def apply_style(self):
+        self.setStyleSheet("""
+            QWidget {
+                background: qlineargradient(
+                    spread:pad, x1:0, y1:0, x2:1, y2:1,
+                    stop:0 #0f2027,
+                    stop:0.5 #203a43,
+                    stop:1 #2c5364
+                );
+                color: #00ffe7;
+                font-family: 'Consolas', 'Segoe UI', monospace;
+                font-size: 14px;
+            }
+            QLabel {
+                color: #00ffe7;
+                font-weight: bold;
+                letter-spacing: 1px;
+            }
+            QLineEdit, QTextEdit, QComboBox {
+                background-color: rgba(0, 0, 0, 0.3);
+                border: 1px solid #00ffe7;
+                color: #00ffe7;
+                border-radius: 6px;
+                padding: 6px;
+            }
+            QPushButton {
+                background-color: #00ffe7;
+                color: #000000;
+                border: none;
+                padding: 10px 20px;
+                border-radius: 10px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #00ccbb;
+            }
+            QTextEdit {
+                background-color: rgba(0, 0, 0, 0.4);
+            }
+            QListWidget {
+                background-color: #1a1a1a;
+                color: #00ffe7;
+                border: 1px solid #00ffe7;
+            }
+        """)
+
+    def show_autocomplete(self, text):
+        if not text:
+            self.autocomplete_list.hide()
+            return
+
+        matches = [s for s in self.stig_list if text.lower() in s.lower()]
+        if matches:
+            self.autocomplete_list.clear()
+            self.autocomplete_list.addItems(matches)
+            self.autocomplete_list.show()
+        else:
+            self.autocomplete_list.hide()
+
+    def fill_autocomplete(self, item):
+        self.stig_input.setText(item.text())
+        self.autocomplete_list.hide()
+
+    def attach_excel_file(self):
+        success = self.excel_manager.attach_excel()
+        if not success:
+            self.excel_status.setText("❌ Failed to open Excel file.")
+            return
+
+        sheets = [s.Name for s in self.excel_manager.workbook.Sheets]
+        self.sheet_dropdown.clear()
+        self.sheet_dropdown.addItems(sheets)
+        self.sheet_dropdown.setCurrentIndex(0)
+        self.sheet_dropdown.setEnabled(True)
+        self.cell_input.setEnabled(True)
+
+        self.excel_status.setText(f"✅ Attached: {self.excel_manager.workbook.Name}")
+        self.confirm_excel_btn.setText("Confirm Target")
+        self.confirm_excel_btn.clicked.disconnect()
+        self.confirm_excel_btn.clicked.connect(self.confirm_excel_selection)
+
+    def confirm_excel_selection(self):
+        sheet = self.sheet_dropdown.currentText()
+        cell = self.cell_input.text().strip().upper()
+
+        if self.excel_manager.set_target(sheet, cell):
+            self.excel_status.setText(f"✅ Ready: {sheet} → {cell}")
+        else:
+            QMessageBox.critical(self, "Error", "Invalid sheet or cell.")
+
+    def run_automation_task(self):
+        stig = self.stig_input.text().strip()
+        vuln = self.vuln_input.text().strip()
+        self.output_box.clear()
+
+        if not stig:
+            QMessageBox.warning(self, "Warning", "Please enter a STIG name.")
+            return
+
+        self.output_box.append("🔍 Running automation...")
+
+        result = run_automation(stig, vuln)
+        self.output_box.setText(result)
+
+        if self.excel_manager.is_ready():
+            try:
+                file, sheet, cell = self.excel_manager.write_to_cell(result)
+                self.output_box.append(f"\n✅ Written to: {file} → {sheet}!{cell}")
+            except Exception as e:
+                self.output_box.append(f"\n❌ Failed to write to Excel: {e}")
+
+
+# Optional: Run this GUI directly without main.py
+if __name__ == "__main__":
+    app = QApplication(sys.argv)
+    window = MitigationNation()
+    window.show()
+    sys.exit(app.exec())
