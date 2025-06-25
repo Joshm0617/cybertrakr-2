@@ -1,0 +1,150 @@
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.chrome.options import Options
+from selenium.common.exceptions import NoSuchElementException
+import time
+from utils import log
+
+def run_automation(stig_name, vuln_id):
+    URL = "https://cyber.trackr.live/stig"
+
+    options = Options()
+    options.add_argument("--start-maximized")
+    options.add_experimental_option("excludeSwitches", ["enable-logging"])
+
+    service = Service(r"C:\\WebDriver\\chromedriver.exe")  # Update path if needed
+    driver = webdriver.Chrome(service=service, options=options)
+    wait = WebDriverWait(driver, 90)
+
+    mitigation_text = ""
+    found = False
+    page = 1
+
+    try:
+        driver.get(URL)
+
+        # ✅ PAGINATION & STIG MATCH
+        while True:
+            wait.until(EC.presence_of_all_elements_located((By.XPATH, "//table//tbody//tr")))
+            rows = driver.find_elements(By.XPATH, "//table//tbody//tr")
+            log(f"📄 Checking page {page} with {len(rows)} rows...")
+
+            for row in rows:
+                cell = row.find_element(By.XPATH, ".//td[1]")
+                name = cell.text.strip()
+                if name.lower() == stig_name.strip().lower():
+                    link = cell.find_element(By.TAG_NAME, "a")
+                    driver.execute_script("arguments[0].click();", link)
+                    log(f"✅ Found STIG match on page {page}: {name}")
+                    found = True
+                    break
+
+            if found:
+                break
+
+            try:
+                pagination = driver.find_element(By.CSS_SELECTOR, "ul.pagination")
+                current_page = int(pagination.find_element(By.CSS_SELECTOR, "li.active").text.strip())
+
+                next_page = None
+                page_links = pagination.find_elements(By.XPATH, ".//li[a and not(contains(@class, 'active'))]")
+                for li in page_links:
+                    text = li.text.strip()
+                    if text.isdigit() and int(text) == current_page + 1:
+                        next_page = li.find_element(By.TAG_NAME, "a")
+                        break
+
+                if next_page:
+                    first_row = driver.find_element(By.XPATH, "//table//tbody//tr[1]").text.strip()
+                    driver.execute_script("arguments[0].click();", next_page)
+                    wait.until(lambda d: d.find_element(By.XPATH, "//table//tbody//tr[1]").text.strip() != first_row)
+                    page += 1
+                else:
+                    log("❌ No more pages, STIG not found.")
+                    mitigation_text = f"❌ STIG '{stig_name}' not found after {page} pages."
+                    driver.quit()
+                    return mitigation_text
+
+            except Exception as e:
+                log(f"⚠️ Pagination error: {e}")
+                mitigation_text = f"❌ Error while paginating: {e}"
+                driver.quit()
+                return mitigation_text
+
+        # ✅ SELECT LATEST VERSION
+        try:
+            log("🔍 Looking for version selector...")
+            select_elem = wait.until(EC.presence_of_element_located((By.ID, "view_stig")))
+            options = select_elem.find_elements(By.TAG_NAME, "option")
+
+            version_map = {}
+            for opt in options:
+                text = opt.text.strip().upper()
+                if "V" in text and "R" in text:
+                    try:
+                        parts = text.replace("V", "").split("R")
+                        major, rev = int(parts[0]), int(parts[1])
+                        version_map[(major, rev)] = opt
+                    except:
+                        continue
+
+            if version_map:
+                latest_key = max(version_map.keys())
+                latest_option = version_map[latest_key]
+                log(f"🔁 Selecting latest version: V{latest_key[0]}R{latest_key[1]}")
+                latest_option.click()
+                time.sleep(1.5)
+
+                view_button = driver.find_element(By.XPATH, "//button[contains(text(), 'View')]")
+                view_button.click()
+                time.sleep(2)
+        except Exception as e:
+            log(f"⚠ Could not select latest version: {e}")
+
+        # ✅ CLICK VULN ID & EXTRACT BLOCK
+        try:
+            if vuln_id:
+                generate_button = wait.until(EC.presence_of_element_located(
+                    (By.XPATH, f"//button[contains(@onclick, \"'{vuln_id}'\")]")
+                ))
+                driver.execute_script("arguments[0].scrollIntoView({block:'center'});", generate_button)
+                time.sleep(1)
+                generate_button.click()
+
+                time.sleep(10)  # ⏳ Wait for full block to render
+
+                # ✅ Find mitigation block using known outer <p class="border border-secondary">
+                mitigation_element = WebDriverWait(driver, 40).until(
+                    EC.presence_of_element_located(
+                        (By.XPATH, "//p[contains(@class, 'border') and contains(@class, 'border-secondary')]")
+                    )
+                )
+
+            else:
+                mitigation_element = WebDriverWait(driver, 30).until(
+                    EC.presence_of_element_located(
+                        (By.XPATH, "//p[contains(@class, 'border') and contains(@class, 'border-secondary')]")
+                    )
+                )
+
+            # ✅ Grab full visible text
+            full_text = mitigation_element.text.strip()
+            log("🧾 Extracted mitigation block:")
+            log(full_text)
+
+            mitigation_text = full_text
+
+        except Exception as e:
+            log(f"❌ Mitigation extraction failed: {e}")
+            mitigation_text = f"❌ Could not extract mitigation statement: {e}"
+
+    except Exception as e:
+        mitigation_text = f"❌ General error: {e}"
+
+    finally:
+        driver.quit()
+
+    return mitigation_text
