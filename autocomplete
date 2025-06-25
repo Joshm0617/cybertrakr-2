@@ -1,0 +1,60 @@
+from utils import log
+import tkinter as tk
+
+class AutocompleteEntry(tk.Entry):
+    def __init__(self, suggestion_list, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.suggestion_list = suggestion_list
+        self.listbox = None
+        self.bind('<KeyRelease>', self.on_keyrelease)
+        self.bind('<Down>', self.move_down)
+
+    def on_keyrelease(self, event):
+        if event.keysym in ("Up", "Down", "Return", "Escape"):
+            return
+        typed = self.get()
+        if not typed:
+            self.hide_listbox()
+            return
+        matches = [x for x in self.suggestion_list if typed.lower() in x.lower()]
+        if matches:
+            if not self.listbox:
+                self.show_listbox()
+            self.update_listbox(matches)
+        else:
+            self.hide_listbox()
+
+    def show_listbox(self):
+        if not self.listbox:
+            self.listbox = tk.Listbox(self.master, width=self["width"])
+            self.listbox.place(x=self.winfo_x(), y=self.winfo_y() + self.winfo_height())
+            self.listbox.bind("<<ListboxSelect>>", self.on_listbox_select)
+            self.listbox.bind("<Button-1>", self.on_listbox_click)
+
+    def update_listbox(self, matches):
+        self.listbox.delete(0, tk.END)
+        for match in matches:
+            self.listbox.insert(tk.END, match)
+        self.listbox.selection_set(0)
+
+    def hide_listbox(self, event=None):
+        if self.listbox:
+            self.listbox.destroy()
+            self.listbox = None
+
+    def on_listbox_select(self, event):
+        if self.listbox:
+            self.delete(0, tk.END)
+            self.insert(0, self.listbox.get(tk.ACTIVE))
+            self.hide_listbox()
+
+    def on_listbox_click(self, event):
+        self.on_listbox_select(event)
+        return 'break'
+
+    def move_down(self, event):
+        if self.listbox:
+            self.listbox.focus()
+            self.listbox.selection_set(0)
+            self.listbox.activate(0)
+            return 'break'
