@@ -1,50 +1,70 @@
-import os
-import win32com.client  # pip install pywin32
-from PySide6.QtWidgets import QFileDialog
-
+import win32com.client
+from tkinter import filedialog, Tk
 
 class ExcelManager:
     def __init__(self):
+        self.reset()
+
+    def reset(self):
+        try:
+            if self.workbook:
+                self.workbook.Close(SaveChanges=0)
+            if self.excel:
+                self.excel.Quit()
+        except:
+            pass
         self.excel = None
         self.workbook = None
-        self.sheet = None
-        self.confirmed_sheet = None
-        self.confirmed_cell = None
+        self.file_path = ""
+        self.target_sheet = None
+        self.target_cell = None
 
     def attach_excel(self):
-        file_path, _ = QFileDialog.getOpenFileName(
-            caption="Select Excel File",
-            filter="Excel Files (*.xlsx *.xls)",
+        root = Tk()
+        root.withdraw()
+        file_path = filedialog.askopenfilename(
+            title="Select Excel File",
+            filetypes=[("Excel files", "*.xlsx *.xls *.xlsm")]
         )
+        root.destroy()
+
         if not file_path:
             return False
 
+        self.reset()
+
         try:
-            self.excel = win32com.client.Dispatch("Excel.Application")
+            self.excel = win32com.client.DispatchEx("Excel.Application")
             self.excel.Visible = True
             self.workbook = self.excel.Workbooks.Open(file_path)
+
+            # Force window to be visible and activated
+            self.excel.Windows(self.workbook.Name).Activate()
+            self.excel.ActiveWindow.WindowState = -4137  # xlNormal
+            self.excel.ActiveWindow.Visible = True
+
+            self.file_path = file_path
             return True
         except Exception as e:
-            print(f"[❌ Excel Error] {e}")
+            print(f"❌ Failed to open Excel: {e}")
+            self.reset()
             return False
 
-    def set_target(self, sheet_name, cell):
+    def set_target(self, sheet_name, cell_ref):
         try:
-            self.sheet = self.workbook.Sheets(sheet_name)
-            _ = self.sheet.Range(cell).Value  # Test access
-            self.confirmed_sheet = sheet_name
-            self.confirmed_cell = cell
+            self.target_sheet = self.workbook.Sheets(sheet_name)
+            self.target_cell = cell_ref
             return True
         except Exception as e:
-            print(f"[❌ Target Error] {e}")
+            print(f"❌ Invalid sheet or cell: {e}")
             return False
 
     def is_ready(self):
-        return self.sheet is not None and self.confirmed_cell is not None
+        return all([self.workbook, self.target_sheet, self.target_cell])
 
     def write_to_cell(self, text):
-        if not self.is_ready():
-            raise Exception("Excel not ready or target not confirmed.")
-        self.sheet.Range(self.confirmed_cell).Value = text
-        self.workbook.Save()
-        return self.workbook.Name, self.confirmed_sheet, self.confirmed_cell
+        try:
+            self.target_sheet.Range(self.target_cell).Value = text
+            return self.file_path, self.target_sheet.Name, self.target_cell
+        except Exception as e:
+            raise Exception(f"Write failed: {e}")
