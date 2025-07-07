@@ -1,4 +1,4 @@
-from gui import MitigationNation
+rt MitigationNation
 from PySide6.QtWidgets import QApplication
 import sys
 
