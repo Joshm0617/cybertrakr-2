@@ -1,6 +1,7 @@
 from PySide6.QtWidgets import (
     QWidget, QLabel, QVBoxLayout, QHBoxLayout, QLineEdit, QPushButton,
-    QTextEdit, QComboBox, QMessageBox, QListWidget, QFileDialog, QApplication
+    QTextEdit, QComboBox, QMessageBox, QListWidget, QFileDialog, QApplication,
+    QInputDialog
 )
 from PySide6.QtGui import QFont
 from PySide6.QtCore import Qt
@@ -8,7 +9,8 @@ from excel_manager import ExcelManager
 from automation import run_automation
 import json
 import sys
- class MitigationNation(QWidget):
+
+class MitigationNation(QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Mitigation Nation - Sci-Fi Edition")
@@ -191,15 +193,26 @@ import sys
         result = run_automation(stig, vuln)
         self.output_box.setText(result)
 
-        if self.excel_manager.is_ready():
-            try:
-                file, sheet, cell = self.excel_manager.write_to_cell(result)
-                self.output_box.append(f"\n✅ Written to: {file} → {sheet}!{cell}")
-            except Exception as e:
-                self.output_box.append(f"\n❌ Failed to write to Excel: {e}")
+        if "enter mitigation manually" in result.lower():
+            text, ok = QInputDialog.getMultiLineText(
+                self,
+                "Enter Mitigation Statement",
+                "Paste or type the mitigation statement below:"
+            )
+            if ok and text.strip():
+                mitigation_text = text.strip()
+                self.output_box.append(f"\n📝 Mitigation entered manually:\n{mitigation_text}")
 
+                if self.excel_manager.is_ready():
+                    try:
+                        file, sheet, cell = self.excel_manager.write_to_cell(mitigation_text)
+                        self.output_box.append(f"\n✅ Written to: {file} → {sheet}!{cell}")
+                    except Exception as e:
+                        self.output_box.append(f"\n❌ Failed to write to Excel: {e}")
+            else:
+                self.output_box.append("\n⚠️ No mitigation statement entered.")
 
-# Optional: Run this GUI directly without main.py
+# Optional standalone runner
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     window = MitigationNation()
