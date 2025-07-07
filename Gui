@@ -8,8 +8,7 @@ from excel_manager import ExcelManager
 from automation import run_automation
 import json
 import sys
-
-class MitigationNation(QWidget):
+ class MitigationNation(QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Mitigation Nation - Sci-Fi Edition")
