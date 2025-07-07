@@ -104,47 +104,22 @@ def run_automation(stig_name, vuln_id):
         except Exception as e:
             log(f"⚠ Could not select latest version: {e}")
 
-        # ✅ CLICK VULN ID & EXTRACT BLOCK
-        try:
-            if vuln_id:
-                generate_button = wait.until(EC.presence_of_element_located(
-                    (By.XPATH, f"//button[contains(@onclick, \"'{vuln_id}'\")]")
-                ))
-                driver.execute_script("arguments[0].scrollIntoView({block:'center'});", generate_button)
-                time.sleep(1)
-                generate_button.click()
-
-                time.sleep(10)  # ⏳ Wait for full block to render
-
-                # ✅ Find mitigation block using known outer <p class="border border-secondary">
-                mitigation_element = WebDriverWait(driver, 40).until(
-                    EC.presence_of_element_located(
-                        (By.XPATH, "//p[contains(@class, 'border') and contains(@class, 'border-secondary')]")
-                    )
-                )
-
-            else:
-                mitigation_element = WebDriverWait(driver, 30).until(
-                    EC.presence_of_element_located(
-                        (By.XPATH, "//p[contains(@class, 'border') and contains(@class, 'border-secondary')]")
-                    )
-                )
-
-            # ✅ Grab full visible text
-            full_text = mitigation_element.text.strip()
-            log("🧾 Extracted mitigation block:")
-            log(full_text)
-
-            mitigation_text = full_text
-
-        except Exception as e:
-            log(f"❌ Mitigation extraction failed: {e}")
-            mitigation_text = f"❌ Could not extract mitigation statement: {e}"
+        # ✅ SCROLL TO THE VULN ID BUTTON BUT DO NOT CLICK
+        if vuln_id:
+            generate_button = wait.until(EC.presence_of_element_located(
+                (By.XPATH, f"//button[contains(@onclick, \"'{vuln_id}'\")]")
+            ))
+            driver.execute_script("arguments[0].scrollIntoView({block:'center'});", generate_button)
+            time.sleep(1)
+            mitigation_text = "📍 STIG and Vuln ID found. Please enter mitigation manually."
+        else:
+            mitigation_text = "📍 STIG found. Please locate mitigation manually in browser."
 
     except Exception as e:
         mitigation_text = f"❌ General error: {e}"
 
     finally:
-        driver.quit()
+        # Don't quit immediately; user may want to copy from browser
+        pass
 
     return mitigation_text
